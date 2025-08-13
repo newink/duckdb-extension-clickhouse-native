@@ -30,21 +30,67 @@ struct ClickHouseScanInitData {
 
 fn map_clickhouse_type(sql_type: SqlType) -> LogicalTypeId {
     match sql_type {
-        SqlType::Int8 | SqlType::Int16 | SqlType::Int32 => LogicalTypeId::Integer,
+        // Boolean types
+        SqlType::Bool => LogicalTypeId::Boolean,
+        
+        // Signed integer types
+        SqlType::Int8 => LogicalTypeId::Tinyint,
+        SqlType::Int16 => LogicalTypeId::Smallint,
+        SqlType::Int32 => LogicalTypeId::Integer,
         SqlType::Int64 => LogicalTypeId::Bigint,
-        SqlType::UInt8 | SqlType::UInt16 | SqlType::UInt32 => LogicalTypeId::UInteger,
+        
+        // Unsigned integer types
+        SqlType::UInt8 => LogicalTypeId::UTinyint,
+        SqlType::UInt16 => LogicalTypeId::USmallint,
+        SqlType::UInt32 => LogicalTypeId::UInteger,
         SqlType::UInt64 => LogicalTypeId::UBigint,
+        
+        // Floating point types
         SqlType::Float32 => LogicalTypeId::Float,
         SqlType::Float64 => LogicalTypeId::Double,
+        
+        // String types
         SqlType::String | SqlType::FixedString(_) => LogicalTypeId::Varchar,
+        
+        // Date and time types
         SqlType::Date => LogicalTypeId::Date,
         SqlType::DateTime(_) => LogicalTypeId::Timestamp,
-        SqlType::Bool => LogicalTypeId::Boolean,
-        _ => LogicalTypeId::Integer,
+        
+        // Network types - map to string representation
+        SqlType::Ipv4 | SqlType::Ipv6 => LogicalTypeId::Varchar,
+        
+        // UUID type
+        SqlType::Uuid => LogicalTypeId::Uuid,
+        
+        // Enum types - map to string representation
+        SqlType::Enum8(_) | SqlType::Enum16(_) => LogicalTypeId::Varchar,
+        
+        // Decimal type
+        SqlType::Decimal(_, _) => LogicalTypeId::Decimal,
+        
+        // Nullable types - recursively map the inner type
+        SqlType::Nullable(inner_type) => map_clickhouse_type(inner_type.clone()),
+        
+        // Array types - map to List
+        SqlType::Array(_) => LogicalTypeId::List,
+        
+        // Map types
+        SqlType::Map(_, _) => LogicalTypeId::Map,
+        
+        // Complex aggregate function types - map to string for now
+        SqlType::SimpleAggregateFunction(_, _) => LogicalTypeId::Varchar,
     }
 }
 
+
 struct ClickHouseScanVTab;
+
+const NULL_DATETIME: &'static str = "1970-01-01T00:00:00Z";
+const NULL_NUMERIC: &'static str = "0.0";
+const NULL_DATE: &'static str = "1970-01-01";
+const NULL_UUID: &'static str = "00000000-0000-0000-0000-000000000000";
+const NULL_INT: &'static str = "0";
+const NULL_BOOLEAN: &'static str = "false";
 
 impl VTab for ClickHouseScanVTab {
     type InitData = ClickHouseScanInitData;
@@ -141,14 +187,166 @@ impl VTab for ClickHouseScanVTab {
             for row in block.rows() {
                 for (col_idx, col) in columns.iter().enumerate() {
                     let value = match col.sql_type() {
-                        SqlType::UInt8 => match row.get::<u8, &str>(col.name()) {
-                            Ok(val) => val.to_string(),
-                            Err(_) => "0".to_string(),
+                        // Boolean
+                        SqlType::Bool => {
+                            match row.get::<bool, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_BOOLEAN.to_string(),
+                            }
                         },
-                        // ... rest of type handling ...
-                        _ => match row.get::<String, &str>(col.name()) {
-                            Ok(val) => val,
-                            Err(_) => "0".to_string(),
+                        
+                        // Signed integers
+                        SqlType::Int8 => {
+                            match row.get::<i8, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::Int16 => {
+                            match row.get::<i16, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::Int32 => {
+                            match row.get::<i32, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::Int64 => {
+                            match row.get::<i64, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        
+                        // Unsigned integers
+                        SqlType::UInt8 => {
+                            match row.get::<u8, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::UInt16 => {
+                            match row.get::<u16, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::UInt32 => {
+                            match row.get::<u32, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        SqlType::UInt64 => {
+                            match row.get::<u64, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_INT.to_string(),
+                            }
+                        },
+                        
+                        // Floating point
+                        SqlType::Float32 => {
+                            match row.get::<f32, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_NUMERIC.to_string(),
+                            }
+                        },
+                        SqlType::Float64 => {
+                            match row.get::<f64, &str>(col.name()) {
+                                Ok(val) => val.to_string(),
+                                Err(_) => NULL_NUMERIC.to_string(),
+                            }
+                        },
+                        
+                        // Strings and text types
+                        SqlType::String | SqlType::FixedString(_) => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| String::new())
+                        },
+                        
+                        // Date and time types - convert to string representation
+                        SqlType::Date => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| NULL_DATE.to_string())
+                        },
+                        SqlType::DateTime(_) => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| NULL_DATETIME.to_string())
+                        },
+                        
+                        // Network types
+                        SqlType::Ipv4 | SqlType::Ipv6 => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| String::new())
+                        },
+                        
+                        // UUID
+                        SqlType::Uuid => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| NULL_UUID.to_string())
+                        },
+                        
+                        // Enum types
+                        SqlType::Enum8(_) | SqlType::Enum16(_) => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| String::new())
+                        },
+                        
+                        // Decimal - try as string first
+                        SqlType::Decimal(_, _) => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| "0".to_string())
+                        },
+                        
+                        // Nullable types - handle based on inner type
+                        SqlType::Nullable(inner_type) => {
+                            match inner_type {
+                                SqlType::Int64 => {
+                                    match row.get::<Option<i64>, &str>(col.name()) {
+                                        Ok(Some(val)) => val.to_string(),
+                                        Ok(None) => String::new(), // NULL value
+                                        Err(_) => {
+                                            // Fallback: try as non-nullable int64
+                                            match row.get::<i64, &str>(col.name()) {
+                                                Ok(val) => val.to_string(),
+                                                Err(_) => "0".to_string(),
+                                            }
+                                        }
+                                    }
+                                },
+                                SqlType::Int32 => {
+                                    match row.get::<Option<i32>, &str>(col.name()) {
+                                        Ok(Some(val)) => val.to_string(),
+                                        Ok(None) => String::new(), // NULL value
+                                        Err(_) => {
+                                            match row.get::<i32, &str>(col.name()) {
+                                                Ok(val) => val.to_string(),
+                                                Err(_) => "0".to_string(),
+                                            }
+                                        }
+                                    }
+                                },
+                                SqlType::String | SqlType::FixedString(_) => {
+                                    match row.get::<Option<String>, &str>(col.name()) {
+                                        Ok(Some(val)) => val,
+                                        Ok(None) => String::new(), // NULL value
+                                        Err(_) => {
+                                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| String::new())
+                                        }
+                                    }
+                                },
+                                _ => {
+                                    // For other nullable types, fall back to string handling
+                                    match row.get::<Option<String>, &str>(col.name()) {
+                                        Ok(Some(val)) => val,
+                                        Ok(None) => String::new(),
+                                        Err(_) => {
+                                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| String::new())
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        
+                        // Complex types - convert to string representation for now
+                        SqlType::Array(_) | SqlType::Map(_, _) | SqlType::SimpleAggregateFunction(_, _) => {
+                            row.get::<String, &str>(col.name()).unwrap_or_else(|_| "[]".to_string())
                         },
                     };
                     data[col_idx].push(value);
@@ -259,7 +457,9 @@ impl VTab for ClickHouseScanVTab {
     }
 }
 
+const FUNCTION_NAME: &'static str = "clickhouse_query";
+
 pub fn register_clickhouse_scan(con: &Connection) -> Result<(), Box<dyn Error>> {
-    con.register_table_function::<ClickHouseScanVTab>("clickhouse_scan")?;
+    con.register_table_function::<ClickHouseScanVTab>(FUNCTION_NAME)?;
     Ok(())
 }
