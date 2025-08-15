@@ -267,7 +267,7 @@ impl VTab for ClickHouseQueryVTab {
 
     fn func(func: &TableFunctionInfo<Self>, output: &mut DataChunkHandle) -> Result<(), Box<dyn Error>> {
         let init_data = func.get_init_data() as *const ClickHouseQueryInitData as *mut ClickHouseQueryInitData;
-        
+
         unsafe {
             if (*init_data).done || (*init_data).current_row >= (*init_data).total_rows {
                 output.set_len(0);
@@ -284,7 +284,7 @@ impl VTab for ClickHouseQueryVTab {
 
             for col_idx in 0..(*init_data).column_types.len() {
                 let mut vector = output.flat_vector(col_idx);
-                let type_id = &(*init_data).column_types[col_idx];
+                let type_id = unsafe { &(*init_data).column_types[col_idx] };
 
                 match type_id {
                     LogicalTypeId::Tinyint => {
@@ -294,7 +294,7 @@ impl VTab for ClickHouseQueryVTab {
                             if val_str == "\\N" || val_str == "\\\\N" {
                                 let slice = vector.as_mut_slice::<i8>();
                                 slice[row_offset] = 0;
-                                drop(slice);
+                                let _ = slice;
                                 vector.set_null(row_offset);
                             } else {
                                 let val = val_str.parse::<i8>().unwrap_or(0);
@@ -303,248 +303,53 @@ impl VTab for ClickHouseQueryVTab {
                             }
                         }
                     }
-                    LogicalTypeId::Smallint => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<i16>();
-                                slice[row_offset] = 0;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = val_str.parse::<i16>().unwrap_or(0);
-                                let slice = vector.as_mut_slice::<i16>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::Integer => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<i32>();
-                                slice[row_offset] = 0;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = val_str.parse::<i32>().unwrap_or(0);
-                                let slice = vector.as_mut_slice::<i32>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::UInteger => {
-                        let slice = vector.as_mut_slice::<u32>();
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            let val = if val_str == "\\N" {
-                                0
-                            } else {
-                                val_str.parse::<u32>().unwrap_or(0)
-                            };
-                            slice[row_offset] = val;
-                        }
-                    }
-                    LogicalTypeId::UTinyint => {
-                        let slice = vector.as_mut_slice::<u8>();
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            let val = if val_str == "\\N" {
-                                0
-                            } else {
-                                val_str.parse::<u8>().unwrap_or(0)
-                            };
-                            slice[row_offset] = val;
-                        }
-                    }
-                    LogicalTypeId::USmallint => {
-                        let slice = vector.as_mut_slice::<u16>();
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            let val = if val_str == "\\N" {
-                                0
-                            } else {
-                                val_str.parse::<u16>().unwrap_or(0)
-                            };
-                            slice[row_offset] = val;
-                        }
-                    }
-                    LogicalTypeId::Bigint => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<i64>();
-                                slice[row_offset] = 0;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = val_str.parse::<i64>().unwrap_or(0);
-                                let slice = vector.as_mut_slice::<i64>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::UBigint => {
-                        let slice = vector.as_mut_slice::<u64>();
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            let val = if val_str == "\\N" {
-                                0
-                            } else {
-                                val_str.parse::<u64>().unwrap_or(0)
-                            };
-                            slice[row_offset] = val;
-                        }
-                    }
-                    LogicalTypeId::Float => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<f32>();
-                                slice[row_offset] = 0.0;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = val_str.parse::<f32>().unwrap_or(0.0);
-                                let slice = vector.as_mut_slice::<f32>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::Double => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<f64>();
-                                slice[row_offset] = 0.0;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = val_str.parse::<f64>().unwrap_or(0.0);
-                                let slice = vector.as_mut_slice::<f64>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::Boolean => {
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            let val_str = &csv_data[col_idx][row_idx];
-                            if val_str == "\\N" || val_str == "\\\\N" {
-                                let slice = vector.as_mut_slice::<bool>();
-                                slice[row_offset] = false;
-                                drop(slice);
-                                vector.set_null(row_offset);
-                            } else {
-                                let val = match val_str.to_lowercase().as_str() {
-                                    "true" | "1" => true,
-                                    _ => false,
-                                };
-                                let slice = vector.as_mut_slice::<bool>();
-                                slice[row_offset] = val;
-                            }
-                        }
-                    }
-                    LogicalTypeId::Date => {
-                        // Date types - insert as strings
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            if row_idx >= csv_data[col_idx].len() {
-                                break;
-                            }
-                            let val = csv_data[col_idx][row_idx].as_str();
-                            vector.insert(row_offset, val);
-                        }
-                    }
-                    LogicalTypeId::Timestamp => {
-                        // Timestamp types - treat as strings for now
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            if row_idx >= csv_data[col_idx].len() {
-                                break;
-                            }
-                            let val = csv_data[col_idx][row_idx].as_str();
-                            vector.insert(row_offset, val);
-                        }
-                    }
-                    LogicalTypeId::Uuid => {
-                        // UUID types - insert as strings
-                        for row_offset in 0..batch_size {
-                            let row_idx = (*init_data).current_row + row_offset;
-                            if row_idx >= csv_data[col_idx].len() {
-                                break;
-                            }
-                            let val = csv_data[col_idx][row_idx].as_str();
-                            vector.insert(row_offset, val);
-                        }
-                    }
                     LogicalTypeId::Decimal => {
-                        // Decimal types - insert as scaled integers based on width
-                        if let Some(Some((precision, scale))) = (*init_data).decimal_params.get(col_idx) {
+                        if let Some(Some((precision, scale))) =
+                            unsafe { (&(*init_data).decimal_params).get(col_idx) }
+                        {
                             for row_offset in 0..batch_size {
                                 let row_idx = (*init_data).current_row + row_offset;
                                 let val_str = &csv_data[col_idx][row_idx];
-                                
+
                                 if val_str == "\\N" || val_str == "\\\\N" {
                                     vector.set_null(row_offset);
                                 } else if let Ok(decimal_val) = val_str.parse::<f64>() {
                                     let scale_factor = 10_i64.pow(*scale as u32);
-                                    
+
                                     if *precision <= 4 {
-                                        // INT16 storage
                                         let scaled_val = (decimal_val * scale_factor as f64).round() as i16;
                                         let slice = vector.as_mut_slice::<i16>();
                                         slice[row_offset] = scaled_val;
                                     } else if *precision <= 9 {
-                                        // INT32 storage  
                                         let scaled_val = (decimal_val * scale_factor as f64).round() as i32;
                                         let slice = vector.as_mut_slice::<i32>();
                                         slice[row_offset] = scaled_val;
                                     } else if *precision <= 18 {
-                                        // INT64 storage
                                         let scaled_val = (decimal_val * scale_factor as f64).round() as i64;
                                         let slice = vector.as_mut_slice::<i64>();
                                         slice[row_offset] = scaled_val;
                                     } else {
-                                        // INT128 storage for precision > 18
-                                        // Parse as high precision decimal and convert to 128-bit integer
                                         use rust_decimal::Decimal as RustDecimal;
                                         use rust_decimal::prelude::ToPrimitive;
                                         use std::str::FromStr;
-                                        
+
                                         if let Ok(rust_decimal) = RustDecimal::from_str(val_str) {
-                                            // Scale the decimal to the target scale
                                             let scaled_decimal = rust_decimal * RustDecimal::from(10_i64.pow(*scale as u32));
-                                            
-                                            // Convert to i128 
                                             if let Some(scaled_i128) = scaled_decimal.to_i128() {
-                                                // DuckDB's hugeint_t is represented as i128 in Rust bindings
                                                 let slice = vector.as_mut_slice::<i128>();
                                                 slice[row_offset] = scaled_i128;
                                             } else {
-                                                // Value too large for i128, set to 0 and null
                                                 let slice = vector.as_mut_slice::<i128>();
                                                 slice[row_offset] = 0;
-                                                drop(slice);
+                                                let _ = slice;
                                                 vector.set_null(row_offset);
                                             }
                                         } else {
-                                            // Parse failed, set to 0
                                             let slice = vector.as_mut_slice::<i128>();
                                             slice[row_offset] = 0;
                                         }
                                     }
                                 } else {
-                                    // Parse failed, set appropriate zero value based on width
                                     if *precision <= 4 {
                                         let slice = vector.as_mut_slice::<i16>();
                                         slice[row_offset] = 0;
@@ -561,7 +366,6 @@ impl VTab for ClickHouseQueryVTab {
                                 }
                             }
                         } else {
-                            // Fallback to string insertion if decimal params not found
                             for row_offset in 0..batch_size {
                                 let row_idx = (*init_data).current_row + row_offset;
                                 let val_str = &csv_data[col_idx][row_idx];
@@ -571,11 +375,9 @@ impl VTab for ClickHouseQueryVTab {
                         }
                     }
                     _ => {
-                        // String types and others
                         for row_offset in 0..batch_size {
                             let row_idx = (*init_data).current_row + row_offset;
                             let val = csv_data[col_idx][row_idx].as_str();
-                            // Handle NULL values in CSV
                             let final_val = if val == "\\N" { "" } else { val };
                             vector.insert(row_offset, final_val);
                         }
@@ -594,12 +396,6 @@ impl VTab for ClickHouseQueryVTab {
     }
 }
 
-const NULL_DATETIME: &'static str = "1970-01-01T00:00:00Z";
-const NULL_NUMERIC: &'static str = "0.0";
-const NULL_DATE: &'static str = "1970-01-01";
-const NULL_UUID: &'static str = "00000000-0000-0000-0000-000000000000";
-const NULL_INT: &'static str = "0";
-const NULL_BOOLEAN: &'static str = "false";
 
 #[repr(C)]
 struct ClickHouseQueryBindData {
