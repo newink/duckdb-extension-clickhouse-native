@@ -48,6 +48,7 @@ clickhouse = "0.13.3"
 chrono = "0.4.39"
 openssl = { version = "0.10", features = ["vendored"] }
 rust_decimal = "1.36"
+bigdecimal = "0.4"
 
 [dev-dependencies]
 once_cell = "1.21.3"

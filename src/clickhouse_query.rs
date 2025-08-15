@@ -284,7 +284,7 @@ impl VTab for ClickHouseQueryVTab {
 
             for col_idx in 0..(*init_data).column_types.len() {
                 let mut vector = output.flat_vector(col_idx);
-                let type_id = unsafe { &(*init_data).column_types[col_idx] };
+                let type_id = &(&(*init_data).column_types)[col_idx];
 
                 match type_id {
                     LogicalTypeId::Tinyint => {
@@ -304,8 +304,8 @@ impl VTab for ClickHouseQueryVTab {
                         }
                     }
                     LogicalTypeId::Decimal => {
-                        if let Some(Some((precision, scale))) =
-                            unsafe { (&(*init_data).decimal_params).get(col_idx) }
+                        if let Some(Some((precision, scale))) 
+                            = (&(*init_data).decimal_params).get(col_idx)
                         {
                             for row_offset in 0..batch_size {
                                 let row_idx = (*init_data).current_row + row_offset;
@@ -314,7 +314,12 @@ impl VTab for ClickHouseQueryVTab {
                                 if val_str == "\\N" || val_str == "\\\\N" {
                                     vector.set_null(row_offset);
                                 } else if let Ok(decimal_val) = val_str.parse::<f64>() {
-                                    let scale_factor = 10_i64.pow(*scale as u32);
+                                    let scale_factor = if *scale <= 18 {
+                                        10_i64.pow(*scale as u32)
+                                    } else {
+                                        // For very large scales, use i128::MAX to avoid overflow
+                                        i64::MAX
+                                    };
 
                                     if *precision <= 4 {
                                         let scaled_val = (decimal_val * scale_factor as f64).round() as i16;
@@ -329,22 +334,38 @@ impl VTab for ClickHouseQueryVTab {
                                         let slice = vector.as_mut_slice::<i64>();
                                         slice[row_offset] = scaled_val;
                                     } else {
-                                        use rust_decimal::Decimal as RustDecimal;
-                                        use rust_decimal::prelude::ToPrimitive;
+                                        // INT128 storage for precision > 18
+                                        // Use bigdecimal for arbitrary precision decimal arithmetic
+                                        use bigdecimal::{BigDecimal, ToPrimitive};
                                         use std::str::FromStr;
 
-                                        if let Ok(rust_decimal) = RustDecimal::from_str(val_str) {
-                                            let scaled_decimal = rust_decimal * RustDecimal::from(10_i64.pow(*scale as u32));
+                                        if let Ok(big_decimal) = BigDecimal::from_str(val_str) {
+                                            // Scale by multiplying by 10^scale
+                                            let scale_factor = if *scale <= 18 {
+                                                BigDecimal::from(10_i64.pow(*scale as u32))
+                                            } else {
+                                                // For very large scales, build the scale factor iteratively
+                                                let mut factor = BigDecimal::from(1);
+                                                for _ in 0..*scale {
+                                                    factor = factor * BigDecimal::from(10);
+                                                }
+                                                factor
+                                            };
+                                            let scaled_decimal = big_decimal * scale_factor;
+                                            
+                                            // Convert to i128
                                             if let Some(scaled_i128) = scaled_decimal.to_i128() {
                                                 let slice = vector.as_mut_slice::<i128>();
                                                 slice[row_offset] = scaled_i128;
                                             } else {
+                                                // Value too large even for i128, set to 0 and null
                                                 let slice = vector.as_mut_slice::<i128>();
                                                 slice[row_offset] = 0;
                                                 let _ = slice;
                                                 vector.set_null(row_offset);
                                             }
                                         } else {
+                                            // Parse failed, set to 0
                                             let slice = vector.as_mut_slice::<i128>();
                                             slice[row_offset] = 0;
                                         }

@@ -1,3 +1,5 @@
+#![deny(dangerous_implicit_autorefs)]
+
 use byteorder::{LittleEndian, ReadBytesExt};
 use duckdb::{
     core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
@@ -13,8 +15,6 @@ use std::{
     fs::File,
     io::{self, BufReader, Read, Seek},
 };
-
-
 
 #[path = "clickhouse_scan.rs"]
 mod clickhouse_scan;
