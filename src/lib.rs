@@ -4,7 +4,9 @@ use duckdb::{
     vtab::{BindInfo, InitInfo, TableFunctionInfo, VTab},
     Connection, Result,
 };
+#[cfg(feature = "extension")]
 use duckdb_loadable_macros::duckdb_entrypoint_c_api;
+#[cfg(feature = "extension")]
 use libduckdb_sys as ffi;
 use std::{
     error::Error,
@@ -12,7 +14,12 @@ use std::{
     io::{self, BufReader, Read, Seek},
 };
 
+
+
+#[path = "clickhouse_scan.rs"]
 mod clickhouse_scan;
+#[path = "clickhouse_query.rs"]
+mod clickhouse_query;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -365,9 +372,10 @@ impl VTab for ClickHouseVTab {
     }
 }
 
+#[cfg(feature = "extension")]
 #[duckdb_entrypoint_c_api()]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
-    con.register_table_function::<ClickHouseVTab>("clickhouse_native")?;
     clickhouse_scan::register_clickhouse_scan(&con)?;
+    clickhouse_query::register_clickhouse_query(&con)?;
     Ok(())
 }

@@ -138,19 +138,7 @@ impl VTab for ClickHouseScanVTab {
         let (names, types) = result;
 
         for (name, type_id) in names.iter().zip(types.iter()) {
-            let logical_type = match type_id {
-                LogicalTypeId::Integer => LogicalTypeId::Integer,
-                LogicalTypeId::Bigint => LogicalTypeId::Bigint,
-                LogicalTypeId::UInteger => LogicalTypeId::UInteger,
-                LogicalTypeId::UBigint => LogicalTypeId::UBigint,
-                LogicalTypeId::Float => LogicalTypeId::Float,
-                LogicalTypeId::Double => LogicalTypeId::Double,
-                LogicalTypeId::Varchar => LogicalTypeId::Varchar,
-                LogicalTypeId::Date => LogicalTypeId::Date,
-                LogicalTypeId::Timestamp => LogicalTypeId::Timestamp,
-                LogicalTypeId::Boolean => LogicalTypeId::Boolean,
-                _ => LogicalTypeId::Varchar,
-            };
+            let logical_type = Self::match_supported_types(type_id);
             let type_handle = LogicalTypeHandle::from(logical_type);
             bind.add_result_column(name, type_handle);
         }
@@ -187,6 +175,8 @@ impl VTab for ClickHouseScanVTab {
             for row in block.rows() {
                 for (col_idx, col) in columns.iter().enumerate() {
                     let value = match col.sql_type() {
+
+                        
                         // Boolean
                         SqlType::Bool => {
                             match row.get::<bool, &str>(col.name()) {
@@ -359,19 +349,7 @@ impl VTab for ClickHouseScanVTab {
 
         let (block_data, total_rows) = result;
 
-        let column_types = bind_data.column_types.iter().map(|t| match t {
-            LogicalTypeId::Integer => LogicalTypeId::Integer,
-            LogicalTypeId::Bigint => LogicalTypeId::Bigint,
-            LogicalTypeId::UInteger => LogicalTypeId::UInteger,
-            LogicalTypeId::UBigint => LogicalTypeId::UBigint,
-            LogicalTypeId::Float => LogicalTypeId::Float,
-            LogicalTypeId::Double => LogicalTypeId::Double,
-            LogicalTypeId::Varchar => LogicalTypeId::Varchar,
-            LogicalTypeId::Date => LogicalTypeId::Date,
-            LogicalTypeId::Timestamp => LogicalTypeId::Timestamp,
-            LogicalTypeId::Boolean => LogicalTypeId::Boolean,
-            _ => LogicalTypeId::Varchar,
-        }).collect();
+        let column_types = bind_data.column_types.iter().map(Self::match_supported_types).collect();
         let column_names = bind_data.column_names.iter().cloned().collect();
 
         Ok(ClickHouseScanInitData {
@@ -437,6 +415,13 @@ impl VTab for ClickHouseScanVTab {
                             }
                         }
                     }
+                    LogicalTypeId::Decimal => {
+                        for row_offset in 0..batch_size {
+                            let row_idx = (*init_data).current_row + row_offset;
+                            let val_str = &block_data[col_idx][row_idx];
+                            vector.insert(row_offset, val_str);
+                        }
+                    }
                     _ => {
                         for row_offset in 0..batch_size {
                             let row_idx = (*init_data).current_row + row_offset;
@@ -458,7 +443,26 @@ impl VTab for ClickHouseScanVTab {
     }
 }
 
-const FUNCTION_NAME: &'static str = "clickhouse_query";
+impl ClickHouseScanVTab {
+    fn match_supported_types(type_id: &LogicalTypeId) -> LogicalTypeId {
+        match type_id {
+            LogicalTypeId::Integer => LogicalTypeId::Integer,
+            LogicalTypeId::Bigint => LogicalTypeId::Bigint,
+            LogicalTypeId::UInteger => LogicalTypeId::UInteger,
+            LogicalTypeId::UBigint => LogicalTypeId::UBigint,
+            LogicalTypeId::Float => LogicalTypeId::Float,
+            LogicalTypeId::Double => LogicalTypeId::Double,
+            LogicalTypeId::Varchar => LogicalTypeId::Varchar,
+            LogicalTypeId::Date => LogicalTypeId::Date,
+            LogicalTypeId::Timestamp => LogicalTypeId::Timestamp,
+            LogicalTypeId::Boolean => LogicalTypeId::Boolean,
+            LogicalTypeId::Decimal => LogicalTypeId::Decimal,
+            _ => LogicalTypeId::Varchar,
+        }
+    }
+}
+
+const FUNCTION_NAME: &'static str = "clickhouse_scan";
 
 pub fn register_clickhouse_scan(con: &Connection) -> Result<(), Box<dyn Error>> {
     con.register_table_function::<ClickHouseScanVTab>(FUNCTION_NAME)?;

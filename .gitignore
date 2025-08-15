@@ -5,3 +5,7 @@ configure
 duckdb_unittest_tempdir
 /test/bin
 venv
+duckdb-postgres
+clickhouse
+status
+uuid
